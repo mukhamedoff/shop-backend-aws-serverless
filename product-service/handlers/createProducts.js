@@ -13,26 +13,19 @@ const dbOptions = {
   },
   connectionTimeoutMilles: 5000
 }
-
 const bodyErrorStringify = JSON.stringify(
   {
-    error: "Sorry! This book does not exist!"
+    error: "Sorry! This product was not created!"
   },
   null,
   2
 )
-const findBookById = (id, books) => {
-  return books.filter(book => {
-    return id === book.id;
-  })[0] || null;
-}
 
 module.exports = async (event) => {
-  const id = event.pathParameters?.productId;
+  const { title, description, price, count } = JSON.parse(event.body);
   const client = new Client(dbOptions);
-  let bookFound = null;
   let response = {
-    statusCode: 200,
+    statusCode: 201,
     headers: {
       "Access-Control-Allow-Headers" : "Content-Type",
       "Access-Control-Allow-Origin": "*",
@@ -44,18 +37,20 @@ module.exports = async (event) => {
   await client.connect();
 
   try {
-    const { rows: books } = await client.query(`SELECT p.*, s.amount as count FROM products p LEFT JOIN stocks s ON p.id = s.product_id WHERE p.id = '${id}'`);
-    if (id && (bookFound = findBookById(id, books))) {
-      response.body = JSON.stringify(
-        bookFound,
-        null,
-        2
-      );
-    }
-    return response;
+    const { rows: book } = await client.query(`INSERT INTO products ("title", "description", "price") VALUES ('${title}', '${description}', ${price}) RETURNING id`);
+    await client.query(`INSERT INTO stocks ("product_id", "amount") VALUES ('${book[0].id}', ${count})`);
+    response.body = JSON.stringify(
+      {
+        id: book[0].id
+      },
+      null,
+      2
+    );
   } catch(err) {
     console.error(err);
   } finally {
     client.end();
   }
+
+  return response;
 };
