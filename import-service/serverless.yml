@@ -6,6 +6,12 @@ provider:
   lambdaHashingVersion: 20201221
   stage: dev
   region: eu-west-1
+    
+  environment:
+    SQS_URL:
+      Ref: SQSQueue
+    SNS_ARN:
+      Ref: SNSTopic
 
   iamRoleStatements:
     - Effect: "Allow"
@@ -15,6 +21,32 @@ provider:
     - Effect: "Allow"
       Action: "s3:*"
       Resource: "arn:aws:s3:::aws-nodejs-import-service/*"
+    - Effect: "Allow"
+      Action: "sqs:*"
+      Resource:
+        Fn::GetAtt: [SQSQueue, Arn]
+    - Effect: "Allow"
+      Action: "sns:*"
+      Resource:
+        Ref: SNSTopic
+
+resources:
+  Resources:
+    SQSQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: catalogItemsQueue
+    SNSTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: createProductTopic
+    SNSSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        Endpoint: yevhen_mukhamedov@epam.com
+        Protocol: email
+        TopicArn:
+          Ref: SNSTopic
 
 functions:
   importProductsFile:
@@ -37,3 +69,13 @@ functions:
           rules:
             - prefix: uploaded/
           existing: true
+  catalogBatchProcess:
+    handler: handler.catalogBatchProcess
+    events:
+      - sqs:
+          batchSize: 5
+          arn:
+            Fn::GetAtt:
+              - SQSQueue
+              - Arn
+

@@ -42,6 +42,7 @@ module.exports = {
   importFileParser: async function (event, context, callback) {
     const { Records } = event;
     const s3 = new AWS.S3({region: REGION});
+    const sqs = new AWS.SQS({region: REGION});
     const { object } = Records[0].s3;
     const params = {
       Bucket: BUCKET,
@@ -68,6 +69,20 @@ module.exports = {
     }).filter(product => product);
     console.log(products);
 
+    for (let i = 0; i < products.length; i++) {
+      console.log("before send", {
+        QueueUrl: process.env.SQS_URL,
+        MessageBody: JSON.stringify(products[i])
+      });
+      await sqs.sendMessage({
+        QueueUrl: process.env.SQS_URL,
+        MessageBody: JSON.stringify(products[i])
+      }, (error, data) => {
+        console.log("Send message for product", error, data);
+      });
+      console.log("after send");
+    }
+
     let status = 200;
 
     const response = {
@@ -82,5 +97,18 @@ module.exports = {
       })
     };
     return response;
+  },
+  catalogBatchProcess: async function (event) {
+    console.log("catalogBatchProcess event", event);
+    console.log("catalogBatchProcess Records", event.Records);
+
+    const sns = new AWS.SNS({region: REGION});
+    sns.publish({
+      Subject: "You are parsed products",
+      Message: "Here must be message",
+      TopicArn: process.env.SNS_ARN
+    }, () => {
+      console.log("Send email with products");
+    });
   }
 }
