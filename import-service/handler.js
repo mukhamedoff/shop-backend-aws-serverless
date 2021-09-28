@@ -4,9 +4,12 @@ const BUCKET = "aws-nodejs-import-service";
 const REGION = "eu-west-1";
 const PREFIX = "uploaded/";
 
+const createProducts = require("./handlers/createProducts");
+
 const getNameOfFirstFile = (files) => {
   return files.filter(file => file.Size)[0].Key;
 };
+AWS.config.update({region: REGION});
 
 module.exports = {
   importProductsFile: async function (event) {
@@ -42,16 +45,13 @@ module.exports = {
   importFileParser: async function (event, context, callback) {
     const { Records } = event;
     const s3 = new AWS.S3({region: REGION});
-    const sqs = new AWS.SQS({region: REGION});
+    const sqs = new AWS.SQS({apiVersion: '2012-11-05'});
     const { object } = Records[0].s3;
     const params = {
       Bucket: BUCKET,
       Key: object.key
     };
-    // const s3Object = s3.getObject(params, function(err, data){
-    //   console.log(`DATA: ${data.Body}`);
-    //   console.log(err);
-    // });
+
     const s3Object = await s3.getObject(params).promise();
     const data = s3Object.Body.toString('utf-8');
     const rows = data.split('\n');
@@ -67,20 +67,14 @@ module.exports = {
       }
       return product;
     }).filter(product => product);
-    console.log(products);
 
     for (let i = 0; i < products.length; i++) {
-      console.log("before send", {
+      const message = {
         QueueUrl: process.env.SQS_URL,
         MessageBody: JSON.stringify(products[i])
-      });
-      await sqs.sendMessage({
-        QueueUrl: process.env.SQS_URL,
-        MessageBody: JSON.stringify(products[i])
-      }, (error, data) => {
-        console.log("Send message for product", error, data);
-      });
-      console.log("after send");
+      };
+      const response = await sqs.sendMessage(message).promise();
+      console.log(`Message put on queue`, response);
     }
 
     let status = 200;
@@ -99,13 +93,18 @@ module.exports = {
     return response;
   },
   catalogBatchProcess: async function (event) {
-    console.log("catalogBatchProcess event", event);
-    console.log("catalogBatchProcess Records", event.Records);
+    const records = event.Records;
+    console.log("catalogBatchProcess records", records);
+
+    for (let i = 0; i < records.length; i++) {
+      const { body } = records[i];
+      await createProducts({ body });
+    }
 
     const sns = new AWS.SNS({region: REGION});
     sns.publish({
       Subject: "You are parsed products",
-      Message: "Here must be message",
+      Message: "Products was parsed",
       TopicArn: process.env.SNS_ARN
     }, () => {
       console.log("Send email with products");

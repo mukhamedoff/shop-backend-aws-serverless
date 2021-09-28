@@ -40,7 +40,7 @@ module.exports = async (event) => {
     },
     body: bodyErrorStringify,
   };
-  
+
   await client.connect();
 
   try {
